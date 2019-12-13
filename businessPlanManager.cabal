@@ -22,9 +22,15 @@ executable businessPlanManager
                      , gi-gtk-declarative
                      , gi-gtk-declarative-app-simple
                      , gi-glib
+                     , gi-gdk
                      , text
                      , vector
-  ghc-options:         -threaded 
+                     , time
+                     , async
+                     , bytestring
+                     , ilist
+  ghc-options:         -threaded -Wall
   other-modules:       Grid
                      , Stack
                      , StackSidebarCW
+                     , ProjectInfo
