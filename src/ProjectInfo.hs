@@ -9,6 +9,7 @@ module ProjectInfo where
     --,
     --) where
 
+import           Data.Text (Text)
 import           Data.Time
 
 class Combinable a where
@@ -55,7 +56,7 @@ data SalaryInfo =
     SalaryInfo
         { salaryInfo :: Int
         }
-        deriving (Show)
+    deriving (Show)
 
 noSalaryInfo :: SalaryInfo
 noSalaryInfo = SalaryInfo 0
@@ -68,22 +69,20 @@ type ExpenseInfo = [ExpenseInfoQuarter]
 noExpenseInfo :: ExpenseInfo
 noExpenseInfo = replicate 4 noExpenseInfoQuarter
 
+type ValueName = Text
+
+type Value = Int
+
 data ExpenseInfoQuarter =
-    ExpenseInfoQuarter
-        { materialExpense  :: Int
-        , salary           :: SalaryInfo
-        , rent             :: Int
-        , utilities        :: Int
-        , householdExpense :: Int
-        }
+    ExpenseInfoQuarter [(ValueName, Value)]
     deriving (Show)
 
 instance Combinable ExpenseInfoQuarter where
-    combined ExpenseInfoQuarter {..} =
-        materialExpense + (combined salary) + rent + utilities + householdExpense
+    combined (ExpenseInfoQuarter xs) = foldl (\acc -> (acc +) . snd) 0 xs
+        --materialExpense + (combined salary) + rent + utilities + householdExpense
 
 noExpenseInfoQuarter :: ExpenseInfoQuarter
-noExpenseInfoQuarter = ExpenseInfoQuarter 0 noSalaryInfo 0 0 0
+noExpenseInfoQuarter = ExpenseInfoQuarter []
 
 combineExpenses :: ProjectInfo -> [Int]
 combineExpenses ProjectInfo {..} = map combined expenses

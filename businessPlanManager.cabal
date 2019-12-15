@@ -23,6 +23,7 @@ executable businessPlanManager
                      , gi-gtk-declarative-app-simple
                      , gi-glib
                      , gi-gdk
+                     , gi-gobject
                      , text
                      , vector
                      , time
@@ -34,3 +35,4 @@ executable businessPlanManager
                      , Stack
                      , StackSidebarCW
                      , ProjectInfo
+                     , LeftRightForm

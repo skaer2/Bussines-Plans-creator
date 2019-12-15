@@ -5,19 +5,21 @@
 
 module Main where
 
+import           LeftRightForm
 import           Grid
 import           ProjectInfo
 import           Stack
 import           StackSidebarCW
 
-import Data.List.Index (imap)
 import           Control.Concurrent.Async      (async)
 import           Control.Monad                 (void)
 import           Data.ByteString               (ByteString)
+import           Data.List.Index               (imap)
 import           Data.Text                     (Text)
 import qualified Data.Text                     as T
 import           Data.Time
 import           Data.Vector                   (Vector, fromList)
+
 --import qualified Data.Vector                   as Vector
 import qualified GI.Gdk                        as Gdk
 import qualified GI.Gtk                        as Gtk
@@ -29,6 +31,7 @@ type State = ProjectInfo
 
 data Event
     = TextChanged Id Text
+    | AddedForm Text Text
     | Closed
     | PrintState
 
@@ -44,7 +47,7 @@ view' state =
     stackBox [] Gtk.Box StackBoxProperties {containerConstructor = Gtk.Box, children = boxChildren}
   where
     boxChildren =
-        [ BoxChild defaultBoxChildProperties {expand = True} stack
+        [ BoxChild defaultBoxChildProperties {expand = True, padding = 10} stack
         , BoxChild defaultBoxChildProperties sidebar
         ]
     stack =
@@ -68,10 +71,13 @@ view' state =
                        Gtk.Grid
                        [#columnSpacing := 3]
                        [gridC 0 0 (label "Income"), gridC 1 0 incomeForm])
+            , StackChild
+                  (mkStackChildProperties "Expenses")
+                  (boxV [BoxChild defaultBoxChildProperties $ formToEvent <$> leftRightForm [] noPlaceHolder {leftPlaceHolder = Just "name", rightPlaceHolder = Just "value"} ])
             , StackChild (mkStackChildProperties "Results") (resultsBox)
             ]
+    formToEvent (TextSubmitted leftText rightText) = AddedForm leftText rightText
     resultsBox = boxV [balanceTable]
-    --balanceTable :: BoxChild Event
     balanceTable =
         BoxChild defaultBoxChildProperties $
         container Gtk.Grid [#columnSpacing := 0] $ fromList $ imap quarter (calculateBalance state)
@@ -79,7 +85,7 @@ view' state =
         gridC
             quarterIndex
             0
-            (widget Gtk.Label [#label := T.pack (show quarterBalance), classes tableClass]) 
+            (widget Gtk.Label [#label := T.pack (show quarterBalance), classes tableClass])
     gridC left' top' widget' = GridChild (mkGridChildProperties left' top') widget'
     gridCW left' top' width' widget' =
         GridChild ((mkGridChildProperties left' top') {width = width'}) widget'
@@ -103,6 +109,7 @@ view' state =
 update' :: State -> Event -> Transition State Event
 update' s e =
     case e of
+        AddedForm nameText valueText -> Transition s (return Nothing)
         PrintState ->
             Transition
                 s
@@ -115,18 +122,23 @@ parseTextToDate :: Text -> Maybe Day
 parseTextToDate text = parseTimeM False defaultTimeLocale "%d-%-m-%-Y" (T.unpack text)
 
 parseTextToInt :: Text -> Int
-parseTextToInt text = case (readMaybe $ T.unpack text) of 
-                        Just x -> x
-                        Nothing -> 0
+parseTextToInt text =
+    case (readMaybe $ T.unpack text) of
+        Just x  -> x
+        Nothing -> 0
 
 addTextToState :: State -> Id -> Text -> State
 addTextToState state StartDate text = state {info = (info state) {startDate = parseTextToDate text}}
 addTextToState state Duration text =
     state {info = (info state) {duration = readMaybe $ T.unpack text}}
---addTextToState state Income text = state {income = parseTextToInt text}
 
+--addTextToState state Income text = state {income = parseTextToInt text}
 styles :: ByteString
-styles = mconcat [".borders {border: 1px solid black; padding: 5px; margin: -1px; border-right-style: none}"]
+styles =
+    mconcat
+        [ ".borders {border: 1px solid black; padding: 5px; margin: -1px; border-right-style: none}"
+        , ".borderRight {border-right: 1px solid black; }"
+        ]
 
 main :: IO ()
 main = do
