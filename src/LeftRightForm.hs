@@ -44,7 +44,7 @@ leftRightForm customAttributes customParams =
         entryRight <- Gtk.new Gtk.Entry []
         Gtk.entrySetPlaceholderText entryLeft $ leftPlaceHolder props
         Gtk.entrySetPlaceholderText entryRight $ rightPlaceHolder props
-        confirmButton <- Gtk.new Gtk.Button [#label Gtk.:= pack "+"]
+        confirmButton <- Gtk.new Gtk.Button [#label Gtk.:= pack "X"]
         #packStart box entryLeft False False 0
         #packStart box entryRight False False 0
         #packStart box confirmButton False False 0

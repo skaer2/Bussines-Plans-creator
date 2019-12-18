@@ -5,7 +5,6 @@
 
 module Main where
 
-import           LeftRightForm
 import           Grid
 import           ProjectInfo
 import           Stack
@@ -14,24 +13,23 @@ import           StackSidebarCW
 import           Control.Concurrent.Async      (async)
 import           Control.Monad                 (void)
 import           Data.ByteString               (ByteString)
-import           Data.List.Index               (imap)
-import           Data.Text                     (Text)
-import qualified Data.Text                     as T
-import           Data.Time
-import           Data.Vector                   (Vector, fromList)
 
---import qualified Data.Vector                   as Vector
+import           Data.List.Index               (imap, indexed)
+import           Data.Text                     (Text, pack, unpack)
+import           Data.Time                     (Day, defaultTimeLocale, parseTimeM)
+import           Data.Vector                   (Vector, fromList, snoc)
+import           Text.Read                     (readMaybe)
+
 import qualified GI.Gdk                        as Gdk
 import qualified GI.Gtk                        as Gtk
 import           GI.Gtk.Declarative
 import           GI.Gtk.Declarative.App.Simple
-import           Text.Read                     (readMaybe)
 
 type State = ProjectInfo
 
 data Event
     = TextChanged Id Text
-    | AddedForm Text Text
+    | UpdateForms FormEvents
     | Closed
     | PrintState
 
@@ -71,12 +69,38 @@ view' state =
                        Gtk.Grid
                        [#columnSpacing := 3]
                        [gridC 0 0 (label "Income"), gridC 1 0 incomeForm])
-            , StackChild
-                  (mkStackChildProperties "Expenses")
-                  (boxV [BoxChild defaultBoxChildProperties $ formToEvent <$> leftRightForm [] noPlaceHolder {leftPlaceHolder = Just "name", rightPlaceHolder = Just "value"} ])
+            , StackChild (mkStackChildProperties "Expenses") (boxedExpenses)
             , StackChild (mkStackChildProperties "Results") (resultsBox)
             ]
-    formToEvent (TextSubmitted leftText rightText) = AddedForm leftText rightText
+    toBoxChildVector x = fromList (map (BoxChild defaultBoxChildProperties) x)
+    --makeExpenses :: State -> [box with [widget event]] EXPENSES - a box of QUARTERS
+    boxedExpenses = boxV $ toBoxChildVector makeExpenses
+    makeExpenses = map (boxedQuarters . forms) (expenses state)
+    -- V(DONE)  makeQuarter :: ExpenseInfoQuarter -> [widget event] A QUARTER - a box of FORMS
+    boxedQuarters x =
+        boxV $
+        snoc
+            (toBoxChildVector (makeQuarter x))
+            (BoxChild defaultBoxChildProperties $
+             widget Gtk.Button [on #clicked (UpdateForms FormAdded), #label := pack "+"])
+    makeQuarter expQuarter = map (boxedForms) $ indexed expQuarter
+    -- V(DONE) makeForms :: (Int, (ValueName, Value)) ->  widget event A FORM - a box of widgets
+    boxedForms x = boxH $ toBoxChildVector (makeForms x)
+    makeForms :: (Int, (Text, Int)) -> [Widget Event]
+    makeForms (pos, (name, value)) =
+        [ widget
+              Gtk.Entry
+              [ #placeholderText := pack "Name"
+              , onM #changed (fmap (UpdateForms . FormNameChanged pos) . Gtk.entryGetText)
+              ]
+        , widget
+              Gtk.Entry
+              [ #placeholderText := pack "Value"
+              , onM #changed
+                    (fmap (UpdateForms . FormValueChanged pos . parseTextToInt) . Gtk.entryGetText)
+              ]
+        , widget Gtk.Button [#label := "x", on #clicked $ UpdateForms $ FormDeleted pos]
+        ]
     resultsBox = boxV [balanceTable]
     balanceTable =
         BoxChild defaultBoxChildProperties $
@@ -85,7 +109,7 @@ view' state =
         gridC
             quarterIndex
             0
-            (widget Gtk.Label [#label := T.pack (show quarterBalance), classes tableClass])
+            (widget Gtk.Label [#label := pack (show quarterBalance), classes tableClass])
     gridC left' top' widget' = GridChild (mkGridChildProperties left' top') widget'
     gridCW left' top' width' widget' =
         GridChild ((mkGridChildProperties left' top') {width = width'}) widget'
@@ -109,30 +133,30 @@ view' state =
 update' :: State -> Event -> Transition State Event
 update' s e =
     case e of
-        AddedForm nameText valueText -> Transition s (return Nothing)
         PrintState ->
             Transition
                 s
                 (do print s
                     return Nothing)
+        UpdateForms formEvent -> Transition (updateExpenses formEvent s) (return Nothing)
         TextChanged widgetId text -> Transition (addTextToState s widgetId text) (return Nothing)
         Closed -> Exit
 
 parseTextToDate :: Text -> Maybe Day
-parseTextToDate text = parseTimeM False defaultTimeLocale "%d-%-m-%-Y" (T.unpack text)
+parseTextToDate text = parseTimeM False defaultTimeLocale "%d-%-m-%-Y" (unpack text)
 
 parseTextToInt :: Text -> Int
 parseTextToInt text =
-    case (readMaybe $ T.unpack text) of
+    case (readMaybe $ unpack text) of
         Just x  -> x
         Nothing -> 0
 
 addTextToState :: State -> Id -> Text -> State
 addTextToState state StartDate text = state {info = (info state) {startDate = parseTextToDate text}}
 addTextToState state Duration text =
-    state {info = (info state) {duration = readMaybe $ T.unpack text}}
+    state {info = (info state) {duration = readMaybe $ unpack text}}
+addTextToState state Income _ = state -- TODO delete this line
 
---addTextToState state Income text = state {income = parseTextToInt text}
 styles :: ByteString
 styles =
     mconcat

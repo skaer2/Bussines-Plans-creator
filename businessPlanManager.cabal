@@ -30,6 +30,7 @@ executable businessPlanManager
                      , async
                      , bytestring
                      , ilist
+                     , containers
   ghc-options:         -threaded -Wall
   other-modules:       Grid
                      , Stack
