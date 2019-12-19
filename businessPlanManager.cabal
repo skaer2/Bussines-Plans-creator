@@ -31,8 +31,9 @@ executable businessPlanManager
                      , bytestring
                      , ilist
                      , containers
-  ghc-options:         -threaded -Wall
+  ghc-options:         -threaded -Wall 
   other-modules:       Grid
+                     , App
                      , Stack
                      , StackSidebarCW
                      , ProjectInfo
