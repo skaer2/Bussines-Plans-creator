@@ -12,17 +12,17 @@ import           ProjectInfo
 import           Stack
 import           StackSidebarCW
 
-import           Data.Int                      (Int32)
-import           Data.List.Index               (imap, indexed)
-import           Data.Text                     (Text, pack, unpack)
-import           Data.Time                     (Day, defaultTimeLocale, parseTimeM)
-import           Data.Vector                   (Vector, fromList, snoc)
-import           Text.Read                     (readMaybe)
+import           Data.Int                           (Int32)
+import           Data.List.Index                    (imap, indexed)
+import           Data.Text                          (Text, pack, unpack)
+import           Data.Time                          (Day, defaultTimeLocale, parseTimeM)
+import           Data.Vector                        (Vector, fromList, snoc)
+import           Text.Read                          (readMaybe)
 
-import qualified GI.Gtk                        as Gtk
+import qualified GI.Gtk                             as Gtk
 import           GI.Gtk.Declarative
 import           GI.Gtk.Declarative.App.Simple
-import GI.Gtk.Declarative.Container.Class
+import           GI.Gtk.Declarative.Container.Class
 
 app :: App Gtk.Window State Event
 app = App {view = view', update = update', inputs = [], initialState = noProjectInfo}
@@ -31,7 +31,9 @@ type State = ProjectInfo
 
 data Event
     = TextChanged Id Text
-    | UpdateForms FormEvents
+    | UpdateForms Int FormEvents
+    | UpdateExpenseQuarters QuarterEvents
+    | UpdateIncomeQuarters QuarterEvents
     | Closed
     | PrintState
 
@@ -92,7 +94,48 @@ gridCW :: Int -> Int -> Int -> Widget event -> GridChild event
 gridCW left' top' width' widget' =
     GridChild ((mkGridChildProperties left' top') {width = width'}) widget'
 
-infoTab :: FromWidget (Container Gtk.Grid (Children GridChild)) target => ProjectInfo -> target Event
+--quarterBox :: (QuarterEvents -> Event) -> Widget Event -> ProjectInfo
+quarterBox eventWrapper f =
+    boxV $
+    snoc
+        (toBoxChildVector f)
+        (BoxChild defaultBoxChildProperties $
+         widget Gtk.Button [#label := pack "+", on #clicked (eventWrapper QuarterAdded)])
+
+quarterTopBox :: Int -> (QuarterEvents -> Event) -> BoxChild Event
+quarterTopBox quarterPos eventWrapper =
+    BoxChild defaultBoxChildProperties $
+    container
+        Gtk.Box
+        []
+        [ BoxChild defaultBoxChildProperties {expand = True, fill = True} $
+          container
+              Gtk.Box
+              [#halign := Gtk.AlignStart]
+              [ widget
+                    Gtk.Entry
+                    [ onM #changed
+                          (fmap (eventWrapper . QuarterRepeatChanged quarterPos . parseTextToInt) .
+                           Gtk.entryGetText)
+                    , #maxLength := 3
+                    , #widthChars := 3
+                    ]
+              , widget Gtk.Label [#label := pack "/3"]
+              ]
+        , BoxChild defaultBoxChildProperties {expand = True, fill = True} $
+          container
+              Gtk.Box
+              [#halign := Gtk.AlignEnd]
+              [ widget
+                    Gtk.Button
+                    [ on #clicked (UpdateExpenseQuarters $ QuarterDeleted quarterPos)
+                    , #label := pack "X"
+                    ]
+              ]
+        ]
+
+infoTab ::
+       FromWidget (Container Gtk.Grid (Children GridChild)) target => ProjectInfo -> target Event
 infoTab _ =
     container
         Gtk.Grid
@@ -108,42 +151,59 @@ infoTab _ =
     dateForm = simpleForm StartDate 10
     durationForm = simpleForm Duration 3
 
-incomeTab :: FromWidget (Container Gtk.Grid (Children GridChild)) target => ProjectInfo -> target Event
-incomeTab _ =
-    container Gtk.Grid [#columnSpacing := 3] [gridC 0 0 (label "Income"), gridC 1 0 incomeForm]
+--incomeTab :: FromWidget (Container Gtk.Grid (Children GridChild)) target => ProjectInfo -> target Event
+--incomeTab :: ProjectInfo -> Widget Event
+incomeTab = quarterBox UpdateIncomeQuarters . makeIncome
   where
-    incomeForm = simpleForm Income 0
+    makeIncome state = map makeQuarter (indexed $ getQuarters $ income state)
+    makeQuarter (quarterPos, (repeating, incQuarter)) =
+        container
+            Gtk.Box
+            [#orientation := Gtk.OrientationVertical]
+            [quarterTopBox quarterPos UpdateExpenseQuarters, bottomBox]
+      where
+        bottomBox = widget Gtk.Entry []
 
-expenseTab :: ProjectInfo -> Widget Event
-expenseTab = boxedExpenses
+--makeQuarter expQuarter quarterInfo =
+--expenseTab :: ProjectInfo -> Widget Event
+expenseTab = quarterBox UpdateExpenseQuarters . makeExpenses
   where
-    boxedExpenses state = boxV $ toBoxChildVector (makeExpenses state)
-    makeExpenses state = map (boxedQuarters . forms) (expenses state)
-    boxedQuarters x =
+    makeExpenses state = map makeQuarter (indexed $ getQuarters $ expenses state)
+    boxedForms quarterPos x =
         boxV $
         snoc
-            (toBoxChildVector (makeQuarter x))
+            (toBoxChildVector (makeForms quarterPos x))
             (BoxChild defaultBoxChildProperties $
-             widget Gtk.Button [on #clicked (UpdateForms FormAdded), #label := pack "+"])
-    makeQuarter expQuarter = map (boxedForms) $ indexed expQuarter -- TODO Make quarters
-    boxedForms x = boxH $ toBoxChildVector (makeForms x)
-    makeForms :: (Int, (Text, Int)) -> [Widget Event]
-    makeForms (pos, (name, value)) =
+             widget Gtk.Button [on #clicked (UpdateForms quarterPos FormAdded), #label := pack "+"])
+    makeForms quarterPos expQuarter = map (boxedForm quarterPos) $ indexed expQuarter -- TODO Make quarters
+    makeQuarter (quarterPos, (repeating, expQuarter)) =
+        container
+            Gtk.Box
+            [#orientation := Gtk.OrientationVertical]
+            [quarterTopBox quarterPos UpdateExpenseQuarters, bottomBox]
+      where
+        bottomBox = boxedForms quarterPos $ forms expQuarter
+    boxedForm quarterPos x = boxH $ toBoxChildVector $ (makeForm quarterPos x)
+    makeForm :: Int -> (Int, (Text, Int)) -> [Widget Event]
+    makeForm quarterPos (pos, (name, value)) =
         [ widget
               Gtk.Entry
               [ #placeholderText := pack "Name"
-              , onM #changed (fmap (UpdateForms . FormNameChanged pos) . Gtk.entryGetText)
+              , onM #changed
+                    (fmap (UpdateForms quarterPos . FormNameChanged pos) . Gtk.entryGetText)
               ]
         , widget
               Gtk.Entry
               [ #placeholderText := pack "Value"
               , onM #changed
-                    (fmap (UpdateForms . FormValueChanged pos . parseTextToInt) . Gtk.entryGetText)
+                    (fmap (UpdateForms quarterPos . FormValueChanged pos . parseTextToInt) .
+                     Gtk.entryGetText)
               ]
-        , widget Gtk.Button [#label := "x", on #clicked $ UpdateForms $ FormDeleted pos]
+        , widget Gtk.Button [#label := "x", on #clicked $ UpdateForms quarterPos $ FormDeleted pos]
         ]
 
-resultsBox :: FromWidget (Container Gtk.Box (Children BoxChild)) target => ProjectInfo -> target Event
+resultsBox ::
+       FromWidget (Container Gtk.Box (Children BoxChild)) target => ProjectInfo -> target Event
 resultsBox state = boxV [balanceTable]
   where
     balanceTable =
@@ -163,7 +223,12 @@ update' s e =
                 s
                 (do print s
                     return Nothing)
-        UpdateForms formEvent -> Transition (updateExpenses formEvent s) (return Nothing)
+        UpdateForms quarterPos formEvent ->
+            Transition (updateExpenses formEvent quarterPos s) (return Nothing)
+        UpdateExpenseQuarters quarterEvent ->
+            Transition (s {expenses = updateQuarters quarterEvent (expenses s)}) (return Nothing)
+        UpdateIncomeQuarters quarterEvent ->
+            Transition (s {income = updateQuarters quarterEvent (income s)}) (return Nothing)
         TextChanged widgetId text -> Transition (addTextToState s widgetId text) (return Nothing)
         Closed -> Exit
 
@@ -180,4 +245,3 @@ addTextToState :: State -> Id -> Text -> State
 addTextToState state StartDate text = state {info = (info state) {startDate = parseTextToDate text}}
 addTextToState state Duration text =
     state {info = (info state) {duration = readMaybe $ unpack text}}
-addTextToState state Income _ = state -- TODO delete this line
