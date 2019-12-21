@@ -13,7 +13,6 @@ import           Data.ByteString               (ByteString)
 
 import qualified GI.Gdk                        as Gdk
 import qualified GI.Gtk                        as Gtk
-import           GI.Gtk.Declarative
 import           GI.Gtk.Declarative.App.Simple
 
 

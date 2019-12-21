@@ -62,11 +62,14 @@ updateQuarters (QuarterRepeatChanged quarterPos newRepeat) =
 class HasEmpty a where
     empty :: a
 
-instance HasEmpty IncomeQuarterInfo where
-    empty = IncomeQuarterInfo 0
+instance HasEmpty IncomeInfoQuarter where
+    empty = IncomeInfoQuarter []
 
 instance HasEmpty ExpenseInfoQuarter where
     empty = ExpenseInfoQuarter []
+
+instance HasEmpty Product where
+    empty = Product (pack "") 0 0 0
 
 addQuarter :: HasEmpty a => Quarters a -> Quarters a
 addQuarter (Quarters quarters) = Quarters $ (0, empty) : quarters
@@ -76,19 +79,80 @@ deleteQuarter quarterPos (Quarters quarters) = Quarters $ deleteAt quarterPos qu
 
 updateQuarterRepeat :: Int -> Int -> Quarters a -> Quarters a
 updateQuarterRepeat quarterPos newRepeat (Quarters quarters) =
-    Quarters $ modifyAt quarterPos (\(x, y) -> (newRepeat, y)) quarters
+    Quarters $ modifyAt quarterPos (\(_, quarterContents) -> (newRepeat, quarterContents)) quarters
 
-type IncomeInfo = Quarters IncomeQuarterInfo -- TODO make quarter inputs
-
-newtype IncomeQuarterInfo =
-    IncomeQuarterInfo Int
+data Product =
+    Product
+        { productName   :: Text
+        , sellQuantity  :: Int
+        , sellPrice     :: Int
+        , producingCost :: Int
+        }
     deriving (Show)
 
-instance Combinable IncomeQuarterInfo where
-    combined (IncomeQuarterInfo x) = x
+instance Combinable Product where
+    combined Product {..} = sellQuantity * (sellPrice - producingCost)
 
-noIncomeQuarterInfo :: IncomeQuarterInfo
-noIncomeQuarterInfo = IncomeQuarterInfo 0
+data ProductEvents
+    = ProductAdded
+    | ProductDeleted Int
+    | ProductNameChanged Int Text
+    | ProductSQuantityChanged Int Int
+    | ProductSPriceChanged Int Int
+    | ProductProducingCostChanged Int Int
+
+mapIncomeQuarterAt :: Int -> (IncomeInfoQuarter -> IncomeInfoQuarter) -> ProjectInfo -> ProjectInfo
+mapIncomeQuarterAt quarterPos f state =
+    state {income = Quarters $ modifyAt quarterPos (\(x, y) -> (x, f y)) quarters}
+  where
+    quarters = getQuarters $ income state -- :: [ (Int, IncomeInfoQuarter) ]
+
+updateIncome :: ProductEvents -> Int -> ProjectInfo -> ProjectInfo
+updateIncome events pos = mapIncomeQuarterAt pos (updateProducts events)
+
+updateProducts :: ProductEvents -> IncomeInfoQuarter -> IncomeInfoQuarter
+updateProducts ProductAdded = IncomeInfoQuarter . addProduct . getProducts
+updateProducts (ProductDeleted pos) = IncomeInfoQuarter . deleteProduct pos . getProducts
+updateProducts (ProductNameChanged pos newName) =
+    IncomeInfoQuarter . changeProductName pos newName . getProducts
+updateProducts (ProductSQuantityChanged pos newValue) =
+    IncomeInfoQuarter . changeProductSQ pos newValue . getProducts
+updateProducts (ProductSPriceChanged pos newValue) =
+    IncomeInfoQuarter . changeProductSP pos newValue . getProducts
+updateProducts (ProductProducingCostChanged pos newValue) =
+    IncomeInfoQuarter . changeProductPC pos newValue . getProducts
+
+addProduct :: [Product] -> [Product]
+addProduct products = empty : products
+
+deleteProduct :: Int -> [Product] -> [Product]
+deleteProduct pos products = deleteAt pos products
+
+changeProductName :: Int -> Text -> [Product] -> [Product]
+changeProductName pos newName = modifyAt pos (\product -> product {productName = newName})
+
+changeProductSQ :: Int -> Int -> [Product] -> [Product]
+changeProductSQ pos newValue = modifyAt pos (\product -> product {sellQuantity = newValue})
+
+changeProductSP :: Int -> Int -> [Product] -> [Product]
+changeProductSP pos newValue = modifyAt pos (\product -> product {sellPrice = newValue})
+
+changeProductPC :: Int -> Int -> [Product] -> [Product]
+changeProductPC pos newValue = modifyAt pos (\product -> product {producingCost = newValue})
+
+type IncomeInfo = Quarters IncomeInfoQuarter -- TODO make quarter inputs
+
+newtype IncomeInfoQuarter =
+    IncomeInfoQuarter
+        { getProducts :: [Product]
+        }
+    deriving (Show)
+
+instance Combinable IncomeInfoQuarter where
+    combined (IncomeInfoQuarter products) = foldl (\acc -> (acc +) . combined) 0 products
+
+noIncomeInfoQuarter :: IncomeInfoQuarter
+noIncomeInfoQuarter = IncomeInfoQuarter []
 
 noIncomeInfo :: IncomeInfo
 noIncomeInfo = Quarters []

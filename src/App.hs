@@ -33,6 +33,7 @@ data Event
     = TextChanged Id Text
     | UpdateForms Int FormEvents
     | UpdateExpenseQuarters QuarterEvents
+    | UpdateProducts Int ProductEvents
     | UpdateIncomeQuarters QuarterEvents
     | Closed
     | PrintState
@@ -94,7 +95,11 @@ gridCW :: Int -> Int -> Int -> Widget event -> GridChild event
 gridCW left' top' width' widget' =
     GridChild ((mkGridChildProperties left' top') {width = width'}) widget'
 
---quarterBox :: (QuarterEvents -> Event) -> Widget Event -> ProjectInfo
+quarterBox ::
+       FromWidget (Container Gtk.Box (Children BoxChild)) target
+    => (QuarterEvents -> Event)
+    -> [Widget Event]
+    -> target Event
 quarterBox eventWrapper f =
     boxV $
     snoc
@@ -102,8 +107,8 @@ quarterBox eventWrapper f =
         (BoxChild defaultBoxChildProperties $
          widget Gtk.Button [#label := pack "+", on #clicked (eventWrapper QuarterAdded)])
 
-quarterTopBox :: Int -> (QuarterEvents -> Event) -> BoxChild Event
-quarterTopBox quarterPos eventWrapper =
+quarterTopBox :: Int -> Int -> (QuarterEvents -> Event) -> BoxChild Event
+quarterTopBox quarterPos repeating eventWrapper =
     BoxChild defaultBoxChildProperties $
     container
         Gtk.Box
@@ -114,13 +119,14 @@ quarterTopBox quarterPos eventWrapper =
               [#halign := Gtk.AlignStart]
               [ widget
                     Gtk.Entry
-                    [ onM #changed
+                    [ #text := pack (show repeating)
+                    , onM #changed
                           (fmap (eventWrapper . QuarterRepeatChanged quarterPos . parseTextToInt) .
                            Gtk.entryGetText)
                     , #maxLength := 3
                     , #widthChars := 3
                     ]
-              , widget Gtk.Label [#label := pack "/3"]
+              , widget Gtk.Label [#label := pack "/3"] -- TODO add support for duration label
               ]
         , BoxChild defaultBoxChildProperties {expand = True, fill = True} $
           container
@@ -128,9 +134,7 @@ quarterTopBox quarterPos eventWrapper =
               [#halign := Gtk.AlignEnd]
               [ widget
                     Gtk.Button
-                    [ on #clicked (UpdateExpenseQuarters $ QuarterDeleted quarterPos)
-                    , #label := pack "X"
-                    ]
+                    [on #clicked (eventWrapper $ QuarterDeleted quarterPos), #label := pack "X"]
               ]
         ]
 
@@ -152,7 +156,7 @@ infoTab _ =
     durationForm = simpleForm Duration 3
 
 --incomeTab :: FromWidget (Container Gtk.Grid (Children GridChild)) target => ProjectInfo -> target Event
---incomeTab :: ProjectInfo -> Widget Event
+incomeTab :: ProjectInfo -> Widget Event
 incomeTab = quarterBox UpdateIncomeQuarters . makeIncome
   where
     makeIncome state = map makeQuarter (indexed $ getQuarters $ income state)
@@ -160,12 +164,73 @@ incomeTab = quarterBox UpdateIncomeQuarters . makeIncome
         container
             Gtk.Box
             [#orientation := Gtk.OrientationVertical]
-            [quarterTopBox quarterPos UpdateExpenseQuarters, bottomBox]
+            [quarterTopBox quarterPos repeating UpdateIncomeQuarters, bottomBox]
       where
-        bottomBox = widget Gtk.Entry []
+        bottomBox = boxedProducts quarterPos incQuarter
+    boxedProducts quarterPos x =
+        boxV $
+        snoc
+            (toBoxChildVector (makeProducts quarterPos x))
+            (BoxChild defaultBoxChildProperties $
+             widget
+                 Gtk.Button
+                 [#label := pack "+", on #clicked (UpdateProducts quarterPos ProductAdded)])
+    makeProducts quarterPos incQuarter = map (makeProduct quarterPos) (indexed $ getProducts incQuarter)
+    makeProduct :: Int -> (Int, Product) -> Widget Event
+    makeProduct quarterPos (pos, product) =
+        container
+            Gtk.Grid
+            [#columnSpacing := 3]
+            [ gridCW 0 0 2 $
+              widget
+                  Gtk.Entry
+                  [ #text := productName product
+                  , #placeholderText := "Product's name"
+                  , onM #changed
+                        (fmap (UpdateProducts quarterPos . ProductNameChanged pos) .
+                         Gtk.entryGetText)
+                  ]
+            , gridC 2 0 $
+              widget
+                  Gtk.Button
+                  [#label := pack "X", on #clicked (UpdateProducts quarterPos $ ProductDeleted pos)]
+            , gridC 0 1 $ widget Gtk.Label [#label := "Product's sell quantity (in units)"]
+            , gridC 1 1 $
+              widget
+                  Gtk.Entry
+                  [ #text := (pack $ show $ sellQuantity product)
+                  , #placeholderText := "Sell quantity"
+                  , onM #changed
+                        (fmap
+                             (UpdateProducts quarterPos .
+                              ProductSQuantityChanged pos . parseTextToInt) .
+                         Gtk.entryGetText)
+                  ]
+            , gridC 1 2 $
+              widget
+                  Gtk.Entry
+                  [ #text := (pack $ show $ sellPrice product)
+                  , #placeholderText := "Sell price"
+                  , onM #changed
+                        (fmap
+                             (UpdateProducts quarterPos . ProductSPriceChanged pos . parseTextToInt) .
+                         Gtk.entryGetText)
+                  ]
+            , gridC 1 3 $
+              widget
+                  Gtk.Entry
+                  [ #text := (pack $ show $ producingCost product)
+                  , #placeholderText := "Producing cost"
+                  , onM #changed
+                        (fmap
+                             (UpdateProducts quarterPos .
+                              ProductProducingCostChanged pos . parseTextToInt) .
+                         Gtk.entryGetText)
+                  ]
+            ]
 
 --makeQuarter expQuarter quarterInfo =
---expenseTab :: ProjectInfo -> Widget Event
+expenseTab :: ProjectInfo -> Widget Event
 expenseTab = quarterBox UpdateExpenseQuarters . makeExpenses
   where
     makeExpenses state = map makeQuarter (indexed $ getQuarters $ expenses state)
@@ -180,21 +245,23 @@ expenseTab = quarterBox UpdateExpenseQuarters . makeExpenses
         container
             Gtk.Box
             [#orientation := Gtk.OrientationVertical]
-            [quarterTopBox quarterPos UpdateExpenseQuarters, bottomBox]
+            [quarterTopBox quarterPos repeating UpdateExpenseQuarters, bottomBox]
       where
         bottomBox = boxedForms quarterPos $ forms expQuarter
     boxedForm quarterPos x = boxH $ toBoxChildVector $ (makeForm quarterPos x)
     makeForm :: Int -> (Int, (Text, Int)) -> [Widget Event]
-    makeForm quarterPos (pos, (name, value)) =
+    makeForm quarterPos (pos, (name', value)) =
         [ widget
               Gtk.Entry
-              [ #placeholderText := pack "Name"
+              [ #text := name'
+              , #placeholderText := pack "Name"
               , onM #changed
                     (fmap (UpdateForms quarterPos . FormNameChanged pos) . Gtk.entryGetText)
               ]
         , widget
               Gtk.Entry
-              [ #placeholderText := pack "Value"
+              [ #text := pack (show value)
+              , #placeholderText := pack "Value"
               , onM #changed
                     (fmap (UpdateForms quarterPos . FormValueChanged pos . parseTextToInt) .
                      Gtk.entryGetText)
@@ -227,6 +294,8 @@ update' s e =
             Transition (updateExpenses formEvent quarterPos s) (return Nothing)
         UpdateExpenseQuarters quarterEvent ->
             Transition (s {expenses = updateQuarters quarterEvent (expenses s)}) (return Nothing)
+        UpdateProducts quarterPos productEvent ->
+            Transition (updateIncome productEvent quarterPos s) (return Nothing)
         UpdateIncomeQuarters quarterEvent ->
             Transition (s {income = updateQuarters quarterEvent (income s)}) (return Nothing)
         TextChanged widgetId text -> Transition (addTextToState s widgetId text) (return Nothing)
