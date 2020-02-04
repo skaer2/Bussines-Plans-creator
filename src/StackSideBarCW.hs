@@ -9,7 +9,6 @@ import           Data.Vector                        (Vector, toList)
 
 import qualified GI.Gtk                             as Gtk
 import           GI.Gtk.Declarative
-import           GI.Gtk.Declarative.App.Simple
 import           GI.Gtk.Declarative.Container.Class
 import           GI.Gtk.Declarative.EventSource
 import           GI.Gtk.Declarative.State
@@ -32,7 +31,7 @@ stackBox ::
        , IsContainer widget child
        , ToChildren widget parent child
        )
-    => Vector (Attribute widget event) {-(Gtk.ManagedPtr widget -> widget)-}
+    => Vector (Attribute widget event)
     -> (Gtk.ManagedPtr widget -> widget)
     -> StackBoxProperties widget parent child event
     -> Widget event
@@ -46,11 +45,6 @@ stackBox customAttributes cons customParams =
              , customAttributes
              , customParams
              })
-  -- The constructor for the underlying GTK widget.
-  -- A function that creates a widget (of the same type as
-  -- customWidget), used on first render and on 'CustomReplace'. It's
-  -- also returning our internal state, a reference to the spin button
-  -- widget.
   where
     customWidget = cons
     customCreate props = do
@@ -73,12 +67,6 @@ stackBox customAttributes cons customParams =
                 appendChild containerPtr theSidebar sidebarPtrWidget
                 appendChild containerPtr theStack stackPtrWidget
         return (containerPtr, stackState)
---  #packStart containerPtr stackPtr True True 0
---  #packStart containerPtr sidebarPtr False False 0
-  -- A function that computes a patch for our custom widget. Here we
-  -- compare the params value of type 'NumberInputProperties' to
-  -- decide whether to modify the spin button widget or not. Note that
-  -- the spin button widget is passed through the internal state.
     customPatch ::
         (ToChildren widget parent child, Patchable child) => 
            StackBoxProperties widget parent child event
@@ -95,9 +83,6 @@ stackBox customAttributes cons customParams =
             toList $ unChildren $ toChildren (containerConstructor old) $ children old
         theStackNew:theSidebarNew:_ =
             toList $ unChildren $ toChildren (containerConstructor new) $ children new
-  -- Finally, we subscribe to widget signals to emit
-  -- 'NumberInputChanged' events from the spin button reference
-  -- carried by the internal state.
     customSubscribe props someState _ cb = do
         let theStack:theSidebar:_ =
                 toList $ unChildren $ toChildren (containerConstructor props) $ children props

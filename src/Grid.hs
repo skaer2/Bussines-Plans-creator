@@ -27,7 +27,7 @@ import           GI.Gtk.Declarative.EventSource
 import           GI.Gtk.Declarative.Patch
 import           GI.Gtk.Declarative.Widget
 
--- | Describes a child widget to be added with 'boxAppend' to a 'Grid'.
+-- | Describes a child widget to be added with 'appendChild' to a 'Grid'.
 data GridChild event =
     GridChild
         { properties :: GridChildProperties
@@ -35,7 +35,7 @@ data GridChild event =
         }
     deriving (Functor)
 
--- | Values used when /packing/ child widgets into boxes.
+-- | Values used when /packing/ child widgets into container.
 data GridChildProperties =
     GridChildProperties
         { left   :: Int

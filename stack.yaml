@@ -68,3 +68,8 @@ packages:
 extra-deps:
 - gi-gtk-declarative-0.6.0
 - gi-gtk-declarative-app-simple-0.6.0
+
+extra-include-dirs:
+- C:\msys64\mingw64\include
+extra-lib-dirs:
+- C:\msys64\mingw64\lib

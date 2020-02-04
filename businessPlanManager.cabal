@@ -31,10 +31,13 @@ executable businessPlanManager
                      , bytestring
                      , ilist
                      , containers
-  ghc-options:         -threaded -Wall 
+                     , mtl
+                     , binary
+  ghc-options:         -threaded -Wall -O2
   other-modules:       Grid
                      , App
                      , Stack
                      , StackSidebarCW
                      , ProjectInfo
-                     , LeftRightForm
+                     , Calculations
+                     , FileSaves

@@ -19,8 +19,7 @@ import           GI.Gtk.Declarative.App.Simple
 styles :: ByteString
 styles =
     mconcat
-        [ ".borders {border: 1px solid black; padding: 5px; margin: -1px; border-right-style: none}"
-        , ".borderRight {border-right: 1px solid black; }"
+        [ ".borders {border: 1px solid black; padding: 5px; margin: -1px;}"
         ]
 
 main :: IO ()
